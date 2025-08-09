@@ -5,7 +5,7 @@ set -eu
 COMMAND=$1
 
 if [ "$COMMAND" = "build" ]; then
-    docker build -t streaming-server .
+    docker build --network=host -t streaming-server .
 elif [ "$COMMAND" = "test" ]; then
     cargo test
 elif [ "$COMMAND" = "run" ]; then
