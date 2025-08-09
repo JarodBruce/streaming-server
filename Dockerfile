@@ -3,14 +3,10 @@ FROM rust:1.82 as builder
 
 WORKDIR /usr/src/app
 
-# Copy dependencies and build them to leverage Docker layer caching
+# Copy dependencies and build them
 COPY Cargo.toml Cargo.lock ./
-# Create a dummy main.rs to build only dependencies
-RUN mkdir src && echo "fn main() {}" > src/main.rs
-RUN cargo build --release
-
-# Copy the actual source code and build the application
 COPY src ./src
+COPY static ./static
 RUN cargo build --release
 
 # Stage 2: Create the final image
