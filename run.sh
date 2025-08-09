@@ -13,8 +13,10 @@ elif [ "$COMMAND" = "run" ]; then
 elif [ "$COMMAND" = "run-bot" ]; then
     echo "Installing Python dependencies..."
     pip install -r requirements.txt
-    echo "Starting viewer bot in the background..."
-    python3 viewer_bot.py &
+    echo "Starting viewer bot..."
+    # Pass all arguments except the first one ("run-bot") to the script
+    shift
+    python3 viewer_bot.py "$@"
 elif [ "$COMMAND" = "lint-markdown" ]; then
     npm exec -c "markdownlint-cli2 \"**/*.md\""
 else

@@ -3,87 +3,178 @@
 <head>
     <title>Streaming Server</title>
     <style>
-        body { font-family: sans-serif; }
+        body { font-family: sans-serif; margin: 2em; background-color: #f8f9fa; color: #343a40; }
+        h1, h2 { color: #007bff; }
+        #container { display: flex; gap: 2em; }
+        #main-content { flex-grow: 1; }
         #video-container {
-            width: 640px;
-            height: 360px;
-            border: 1px solid black;
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            background-color: black;
         }
-        #playlist {
-            margin-top: 10px;
-        }
-        #playlist ul {
-            list-style: none;
-            padding: 0;
-        }
-        #playlist li {
+        video { width: 100%; display: block; }
+        #video-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2em;
             cursor: pointer;
-            padding: 5px;
+            transition: opacity 0.3s;
         }
-        #playlist li:hover {
-            background-color: #eee;
+        #video-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
         }
+        #playlist-container { min-width: 250px; }
+        #playlist ul { list-style: none; padding: 0; margin: 0; }
+        #playlist li { cursor: pointer; padding: 10px 15px; border-bottom: 1px solid #dee2e6; transition: background-color 0.2s; }
+        #playlist li:hover, #playlist li.active { background-color: #e9ecef; }
+        #status { margin-top: 1em; font-size: 1.2em; }
+        #viewer-count { font-weight: bold; color: #28a745; }
     </style>
 </head>
 <body>
-    <h1>Streaming Server</h1>
-    <div id="video-container">
-        <video id="video-player" width="640" height="360" controls autoplay>
-        </video>
-    </div>
-    <div id="playlist">
-        <h2>Playlist</h2>
-        <p>Viewers: <span id="viewer-count">0</span></p>
-        <ul id="video-list"></ul>
+    <h1>Rust Streaming Server</h1>
+    <div id="container">
+        <div id="main-content">
+            <div id="video-container">
+                <video id="video-player" controls muted loop>
+                    <source src="" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+                <div id="video-overlay">▶ Play</div>
+            </div>
+            <div id="status">
+                <p>Viewers: <span id="viewer-count">0</span></p>
+            </div>
+        </div>
+        <div id="playlist-container">
+            <h2>Playlist</h2>
+            <div id="playlist">
+                <ul id="video-list"></ul>
+            </div>
+        </div>
     </div>
 
     <script>
         const videoPlayer = document.getElementById('video-player');
         const videoList = document.getElementById('video-list');
         const viewerCountSpan = document.getElementById('viewer-count');
+        const videoOverlay = document.getElementById('video-overlay');
         
-        // Generate a unique ID for this client session
         const clientId = crypto.randomUUID();
+        let videos = [];
+        let userInteracted = false;
+        let ws;
+
+        function connectWebSocket() {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.count !== undefined) {
+                        viewerCountSpan.textContent = data.count;
+                    }
+                } catch (e) {
+                    console.error("Failed to parse WebSocket message:", e);
+                }
+            };
+
+            ws.onclose = () => {
+                console.log("WebSocket connection closed. Reconnecting in 3 seconds...");
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            ws.onerror = (err) => {
+                console.error("WebSocket error:", err);
+                ws.close();
+            };
+        }
 
         async function fetchVideos() {
-            const response = await fetch('/videos');
-            const videos = await response.json();
+            try {
+                const response = await fetch('/videos');
+                if (!response.ok) throw new Error('Failed to fetch video list');
+                videos = await response.json();
 
-            videoList.innerHTML = '';
-            videos.forEach(video => {
-                const listItem = document.createElement('li');
-                listItem.textContent = video.name;
-                listItem.addEventListener('click', () => {
-                    videoPlayer.src = `/video/${video.name}`;
+                videoList.innerHTML = '';
+                videos.forEach((video, index) => {
+                    const listItem = document.createElement('li');
+                    listItem.textContent = video.name;
+                    listItem.dataset.filename = video.name;
+                    listItem.addEventListener('click', () => {
+                        playVideo(video.name);
+                        setActiveListItem(listItem);
+                    });
+                    videoList.appendChild(listItem);
+                    if (index === 0) {
+                        videoPlayer.src = `/video/${video.name}`;
+                        setActiveListItem(listItem);
+                    }
                 });
-                videoList.appendChild(listItem);
-            });
+            } catch (error) {
+                console.error('Error fetching videos:', error);
+                videoList.innerHTML = '<li>Could not load videos.</li>';
+            }
+        }
+
+        function playVideo(filename) {
+            if (!userInteracted) return;
+            
+            videoPlayer.src = `/video/${filename}`;
+            const promise = videoPlayer.play();
+            if (promise !== undefined) {
+                promise.catch(error => console.error("Playback error:", error));
+            }
+        }
+
+        function setActiveListItem(selectedItem) {
+            videoList.querySelectorAll('li').forEach(item => item.classList.remove('active'));
+            if (selectedItem) {
+                selectedItem.classList.add('active');
+            }
         }
 
         async function sendHeartbeat() {
-            await fetch('/heartbeat', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ client_id: clientId }),
-            });
+            // Only send heartbeats if the document has focus to be more efficient
+            if (document.hasFocus()) {
+                try {
+                    await fetch('/heartbeat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ client_id: clientId }),
+                    });
+                } catch (error) {
+                    console.error('Error sending heartbeat:', error);
+                }
+            }
         }
 
-        async function updateViewerCount() {
-            const response = await fetch('/viewers');
-            const data = await response.json();
-            viewerCountSpan.textContent = data.count;
-        }
+        videoOverlay.addEventListener('click', () => {
+            userInteracted = true;
+            videoOverlay.classList.add('hidden');
+            const firstVideo = videos[0];
+            if (firstVideo) {
+                playVideo(firstVideo.name);
+            }
+        }, { once: true });
 
-        // Initial calls
+        // --- Initial Setup ---
         fetchVideos();
+        connectWebSocket();
         
-        // Set up periodic tasks
-        setInterval(() => {
-            sendHeartbeat();
-            updateViewerCount();
-        }, 5000); // every 5 seconds
+        // Heartbeat is still useful to know which clients are active
+        setInterval(sendHeartbeat, 100);
 
     </script>
 </body>
