@@ -4,7 +4,7 @@ FROM rust:1.82 AS builder
 WORKDIR /usr/src/app
 
 # Copy the dependency definitions
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml ./
 
 # Create a dummy src/main.rs to cache dependencies
 RUN mkdir src && echo "fn main() {}" > src/main.rs
