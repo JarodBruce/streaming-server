@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Streaming Server</title>
+    <style>
+        body { font-family: sans-serif; }
+        #video-container {
+            width: 640px;
+            height: 360px;
+            border: 1px solid black;
+        }
+        #playlist {
+            margin-top: 10px;
+        }
+        #playlist ul {
+            list-style: none;
+            padding: 0;
+        }
+        #playlist li {
+            cursor: pointer;
+            padding: 5px;
+        }
+        #playlist li:hover {
+            background-color: #eee;
+        }
+    </style>
+</head>
+<body>
+    <h1>Streaming Server</h1>
+    <div id="video-container">
+        <video id="video-player" width="640" height="360" controls autoplay>
+        </video>
+    </div>
+    <div id="playlist">
+        <h2>Playlist</h2>
+        <p>Viewers: <span id="viewer-count">0</span></p>
+        <ul id="video-list"></ul>
+    </div>
+
+    <script>
+        const videoPlayer = document.getElementById('video-player');
+        const videoList = document.getElementById('video-list');
+        const viewerCountSpan = document.getElementById('viewer-count');
+        
+        // Generate a unique ID for this client session
+        const clientId = crypto.randomUUID();
+
+        async function fetchVideos() {
+            const response = await fetch('/videos');
+            const videos = await response.json();
+
+            videoList.innerHTML = '';
+            videos.forEach(video => {
+                const listItem = document.createElement('li');
+                listItem.textContent = video.name;
+                listItem.addEventListener('click', () => {
+                    videoPlayer.src = `/video/${video.name}`;
+                });
+                videoList.appendChild(listItem);
+            });
+        }
+
+        async function sendHeartbeat() {
+            await fetch('/heartbeat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ client_id: clientId }),
+            });
+        }
+
+        async function updateViewerCount() {
+            const response = await fetch('/viewers');
+            const data = await response.json();
+            viewerCountSpan.textContent = data.count;
+        }
+
+        // Initial calls
+        fetchVideos();
+        
+        // Set up periodic tasks
+        setInterval(() => {
+            sendHeartbeat();
+            updateViewerCount();
+        }, 5000); // every 5 seconds
+
+    </script>
+</body>
+</html>

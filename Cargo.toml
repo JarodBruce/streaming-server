@@ -1,0 +1,12 @@
+[package]
+name = "streaming-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+actix-web = "4"
+serde = { version = "1.0", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+rand = "0.8"
+actix-cors = "0.7"
+
